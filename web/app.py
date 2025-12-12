@@ -14,19 +14,38 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Kafka Producer 설정
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:19092')
 KAFKA_TOPIC = 'power_generation_data'
 
-try:
-    producer = KafkaProducer(
-        bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-        value_serializer=lambda v: json.dumps(v).encode('utf-8'),
-        max_block_ms=5000
-    )
-    logger.info(f"Kafka Producer connected to {KAFKA_BOOTSTRAP_SERVERS}")
-except Exception as e:
-    logger.error(f"Failed to connect to Kafka: {e}")
-    producer = None
+# Kafka 연결 시도 (여러 주소 시도)
+producer = None
+kafka_addresses = [
+    KAFKA_BOOTSTRAP_SERVERS,
+    'localhost:19092',  # Docker 외부 포트
+    'kafka:29092',      # Docker 내부
+    'localhost:9092',   # 기본 포트
+]
+
+for address in kafka_addresses:
+    try:
+        logger.info(f"Attempting Kafka connection to {address}...")
+        producer = KafkaProducer(
+            bootstrap_servers=address,
+            value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+            max_block_ms=5000,
+            request_timeout_ms=10000,
+            api_version_auto_timeout_ms=10000
+        )
+        KAFKA_BOOTSTRAP_SERVERS = address  # 성공한 주소 저장
+        logger.info(f"✅ Kafka Producer connected to {address}")
+        break
+    except Exception as e:
+        logger.warning(f"Failed to connect to {address}: {e}")
+        continue
+
+if producer is None:
+    logger.error("❌ Failed to connect to Kafka on all addresses")
+    logger.info("System will run in degraded mode (no Kafka)")
 
 # HTML Template
 HTML_TEMPLATE = '''
@@ -318,9 +337,29 @@ def health_check():
     """헬스 체크 엔드포인트"""
     kafka_status = 'connected' if producer else 'disconnected'
     
+    # Kafka 재연결 시도
+    if not producer:
+        global producer, KAFKA_BOOTSTRAP_SERVERS
+        for address in ['localhost:19092', 'kafka:29092', 'localhost:9092']:
+            try:
+                test_producer = KafkaProducer(
+                    bootstrap_servers=address,
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    max_block_ms=2000,
+                    request_timeout_ms=5000
+                )
+                producer = test_producer
+                KAFKA_BOOTSTRAP_SERVERS = address
+                kafka_status = 'reconnected'
+                logger.info(f"Kafka reconnected to {address}")
+                break
+            except:
+                continue
+    
     return jsonify({
         'status': 'healthy',
         'kafka': kafka_status,
+        'kafka_server': KAFKA_BOOTSTRAP_SERVERS if producer else 'none',
         'timestamp': datetime.now().isoformat()
     })
 

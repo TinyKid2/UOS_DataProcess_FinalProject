@@ -76,6 +76,11 @@ services:
     networks:
       - microgrid-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # Data Preprocessing Service
   preprocessing-service:
