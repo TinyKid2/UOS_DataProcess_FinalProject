@@ -1,0 +1,177 @@
+version: '3.8'
+
+services:
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - etl-network
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    hostname: kafka
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    networks:
+      - etl-network
+
+  # Apache NiFi for ETL orchestration
+  nifi:
+    image: apache/nifi:1.23.2
+    container_name: nifi
+    ports:
+      - "8443:8443"
+      - "8080:8080"
+    environment:
+      - SINGLE_USER_CREDENTIALS_USERNAME=admin
+      - SINGLE_USER_CREDENTIALS_PASSWORD=adminPassword123
+      - NIFI_WEB_HTTP_PORT=8080
+    volumes:
+      - ./nifi/data:/opt/nifi/nifi-current/data
+      - ./nifi/content:/opt/nifi/nifi-current/content_repository
+      - ./nifi/database:/opt/nifi/nifi-current/database_repository
+      - ./nifi/flowfile:/opt/nifi/nifi-current/flowfile_repository
+      - ./nifi/provenance:/opt/nifi/nifi-current/provenance_repository
+      - ./uploads:/uploads
+    networks:
+      - etl-network
+
+  # MariaDB Database
+  mariadb:
+    image: mariadb:11.1
+    container_name: mariadb
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: model_evaluation
+      MYSQL_USER: etl_user
+      MYSQL_PASSWORD: etl_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - etl-network
+
+  # Web Server for file uploads
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: web-server
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - UPLOAD_FOLDER=/uploads
+      - KAFKA_BROKER=kafka:29092
+    volumes:
+      - ./uploads:/uploads
+      - ./web:/app
+    depends_on:
+      - kafka
+      - mariadb
+    networks:
+      - etl-network
+
+  # Evaluation Node for YOLO model inference
+  eval-node:
+    build:
+      context: .
+      dockerfile: Dockerfile.eval
+    container_name: eval-node
+    environment:
+      - KAFKA_BROKER=kafka:29092
+      - DB_HOST=mariadb
+      - DB_USER=etl_user
+      - DB_PASSWORD=etl_password
+      - DB_NAME=model_evaluation
+    volumes:
+      - ./uploads:/uploads
+      - ./eval:/app
+      - ./models:/models
+    depends_on:
+      - kafka
+      - mariadb
+    networks:
+      - etl-network
+
+  # Kafka UI for monitoring
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+      - zookeeper
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - etl-network
+
+  # Apache Spark for data processing
+  spark:
+    image: bitnami/spark:3.5
+    container_name: spark
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    ports:
+      - "8081:8080"
+      - "7077:7077"
+    volumes:
+      - ./spark:/opt/spark-apps
+    networks:
+      - etl-network
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_WORKER_MEMORY=2G
+      - SPARK_WORKER_CORES=2
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    depends_on:
+      - spark
+    networks:
+      - etl-network
+
+volumes:
+  mariadb_data:
+  
+networks:
+  etl-network:
+    driver: bridge
