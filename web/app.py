@@ -338,7 +338,7 @@ def health_check():
     global producer, KAFKA_BOOTSTRAP_SERVERS
     
     kafka_status = 'connected' if producer else 'disconnected'
-    global producer, KAFKA_BOOTSTRAP_SERVERS
+    
     # Kafka 재연결 시도
     if not producer:
         for address in ['localhost:19092', 'kafka:29092', 'localhost:9092']:
