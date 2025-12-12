@@ -10,7 +10,7 @@ services:
     hostname: zookeeper
     container_name: zookeeper
     ports:
-      - "2181:2181"
+      - "12181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -26,13 +26,13 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "69092:9092"
+      - "19092:9092"
       - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:19092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -47,7 +47,7 @@ services:
     image: mariadb:11.1
     container_name: mariadb
     ports:
-      - "63306:3306"
+      - "13306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: model_evaluation
@@ -66,7 +66,7 @@ services:
       dockerfile: Dockerfile.web
     container_name: web-server
     ports:
-      - "65000:5000"
+      - "15000:5000"
     environment:
       - FLASK_APP=app.py
       - UPLOAD_FOLDER=/uploads
@@ -110,7 +110,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "68090:8080"
+      - "18090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092

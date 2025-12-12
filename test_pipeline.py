@@ -10,7 +10,7 @@ import json
 import sys
 from datetime import datetime
 
-BASE_URL = "http://localhost:5000"
+BASE_URL = "http://localhost:15000"
 
 def test_health():
     """Test if web server is running"""
