@@ -12,7 +12,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     networks:
-      - etl-network
+      - microgrid-network
 
   # Kafka Broker
   kafka:
@@ -35,9 +35,123 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
     networks:
-      - etl-network
+      - microgrid-network
 
-  # Apache NiFi for ETL orchestration
+  # MariaDB Database
+  mariadb:
+    image: mariadb:11.1
+    container_name: mariadb
+    ports:
+      - "13306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: microgrid_control
+      MYSQL_USER: microgrid_user
+      MYSQL_PASSWORD: microgrid_password
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - microgrid-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # Web Server for power data input
+  web-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: web-server
+    ports:
+      - "15000:5000"
+    environment:
+      - FLASK_APP=app.py
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - ./web:/app
+    depends_on:
+      - kafka
+    networks:
+      - microgrid-network
+    restart: unless-stopped
+
+  # Data Preprocessing Service
+  preprocessing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.preprocessing
+    container_name: preprocessing-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - ./services:/app
+    depends_on:
+      - kafka
+    networks:
+      - microgrid-network
+    restart: unless-stopped
+    command: python preprocessing_service.py
+
+  # Optimization Engine
+  optimization-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile.optimization
+    container_name: optimization-engine
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+    volumes:
+      - ./services:/app
+    depends_on:
+      - kafka
+      - preprocessing-service
+    networks:
+      - microgrid-network
+    restart: unless-stopped
+    command: python optimization_engine.py
+
+  # Database Storage Service
+  db-storage-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.storage
+    container_name: db-storage-service
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - DB_HOST=mariadb
+      - DB_USER=microgrid_user
+      - DB_PASSWORD=microgrid_password
+      - DB_NAME=microgrid_control
+    volumes:
+      - ./services:/app
+    depends_on:
+      - kafka
+      - mariadb
+      - optimization-engine
+    networks:
+      - microgrid-network
+    restart: unless-stopped
+    command: python db_storage_service.py
+
+  # Kafka UI for monitoring
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      - kafka
+      - zookeeper
+    ports:
+      - "18090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - microgrid-network
+
+  # Apache NiFi for ETL orchestration (optional)
   nifi:
     image: apache/nifi:1.23.2
     container_name: nifi
@@ -54,87 +168,10 @@ services:
       - ./nifi/database:/opt/nifi/nifi-current/database_repository
       - ./nifi/flowfile:/opt/nifi/nifi-current/flowfile_repository
       - ./nifi/provenance:/opt/nifi/nifi-current/provenance_repository
-      - ./uploads:/uploads
     networks:
-      - etl-network
+      - microgrid-network
 
-  # MariaDB Database
-  mariadb:
-    image: mariadb:11.1
-    container_name: mariadb
-    ports:
-      - "13306:3306"
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: model_evaluation
-      MYSQL_USER: etl_user
-      MYSQL_PASSWORD: etl_password
-    volumes:
-      - mariadb_data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    networks:
-      - etl-network
-
-  # Web Server for file uploads
-  web-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
-    container_name: web-server
-    ports:
-      - "15000:5000"
-    environment:
-      - FLASK_APP=app.py
-      - UPLOAD_FOLDER=/uploads
-      - KAFKA_BROKER=kafka:29092
-    volumes:
-      - ./uploads:/uploads
-      - ./web:/app
-    depends_on:
-      - kafka
-      - mariadb
-    networks:
-      - etl-network
-
-  # Evaluation Node for YOLO model inference
-  eval-node:
-    build:
-      context: .
-      dockerfile: Dockerfile.eval
-    container_name: eval-node
-    environment:
-      - KAFKA_BROKER=kafka:29092
-      - DB_HOST=mariadb
-      - DB_USER=etl_user
-      - DB_PASSWORD=etl_password
-      - DB_NAME=model_evaluation
-    volumes:
-      - ./uploads:/uploads
-      - ./eval:/app
-      - ./models:/models
-    depends_on:
-      - kafka
-      - mariadb
-    networks:
-      - etl-network
-
-  # Kafka UI for monitoring
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: kafka-ui
-    depends_on:
-      - kafka
-      - zookeeper
-    ports:
-      - "18090:8080"
-    environment:
-      KAFKA_CLUSTERS_0_NAME: local
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-    networks:
-      - etl-network
-
-  # Apache Spark for data processing
+  # Apache Spark for advanced analytics (optional)
   spark:
     image: bitnami/spark:3.5
     container_name: spark
@@ -150,7 +187,7 @@ services:
     volumes:
       - ./spark:/opt/spark-apps
     networks:
-      - etl-network
+      - microgrid-network
 
   spark-worker:
     image: bitnami/spark:3.5
@@ -167,11 +204,11 @@ services:
     depends_on:
       - spark
     networks:
-      - etl-network
+      - microgrid-network
 
 volumes:
   mariadb_data:
   
 networks:
-  etl-network:
+  microgrid-network:
     driver: bridge
