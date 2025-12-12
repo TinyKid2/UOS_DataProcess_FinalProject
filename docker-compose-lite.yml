@@ -1,10 +1,11 @@
-version: '3.8'
+version: '2.2'
 
 # Spark 없는 경량 버전 - 기본 ETL 파이프라인만 포함
 
 services:
   # Zookeeper for Kafka
   zookeeper:
+    name : zookeeper
     image: confluentinc/cp-zookeeper:7.5.0
     hostname: zookeeper
     container_name: zookeeper
@@ -18,6 +19,7 @@ services:
 
   # Kafka Broker
   kafka:
+    name : kafka
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka
     container_name: kafka
@@ -41,6 +43,7 @@ services:
 
   # MariaDB Database
   mariadb:
+    name : mariadb
     image: mariadb:11.1
     container_name: mariadb
     ports:
