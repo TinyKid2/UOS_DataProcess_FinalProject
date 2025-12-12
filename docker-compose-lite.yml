@@ -5,7 +5,7 @@ version: '2.2'
 services:
   # Zookeeper for Kafka
   zookeeper:
-    name : zookeeper
+    
     image: confluentinc/cp-zookeeper:7.5.0
     hostname: zookeeper
     container_name: zookeeper
@@ -19,14 +19,14 @@ services:
 
   # Kafka Broker
   kafka:
-    name : kafka
+
     image: confluentinc/cp-kafka:7.5.0
     hostname: kafka
     container_name: kafka
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "69092:9092"
       - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
@@ -43,11 +43,11 @@ services:
 
   # MariaDB Database
   mariadb:
-    name : mariadb
+
     image: mariadb:11.1
     container_name: mariadb
     ports:
-      - "3306:3306"
+      - "63306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: model_evaluation
@@ -66,7 +66,7 @@ services:
       dockerfile: Dockerfile.web
     container_name: web-server
     ports:
-      - "5000:5000"
+      - "65000:5000"
     environment:
       - FLASK_APP=app.py
       - UPLOAD_FOLDER=/uploads
@@ -110,7 +110,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "8090:8080"
+      - "68090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092

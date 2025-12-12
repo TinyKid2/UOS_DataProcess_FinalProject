@@ -7,7 +7,7 @@ services:
     hostname: zookeeper
     container_name: zookeeper
     ports:
-      - "2181:2181"
+      - "62181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -22,7 +22,7 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9092:9092"
+      - "69092:9092"
       - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
@@ -63,7 +63,7 @@ services:
     image: mariadb:11.1
     container_name: mariadb
     ports:
-      - "3306:3306"
+      - "63306:3306"
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
       MYSQL_DATABASE: model_evaluation
@@ -82,7 +82,7 @@ services:
       dockerfile: Dockerfile.web
     container_name: web-server
     ports:
-      - "5000:5000"
+      - "65000:5000"
     environment:
       - FLASK_APP=app.py
       - UPLOAD_FOLDER=/uploads
@@ -126,7 +126,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "8090:8080"
+      - "68090:8080"
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
@@ -134,17 +134,18 @@ services:
     networks:
       - etl-network
 
-  # Apache Spark for data processing (using official Apache image)
-  spark-master:
-    image: apache/spark:3.5.0
-    container_name: spark-master
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+  # Apache Spark for data processing
+  spark:
+    image: bitnami/spark:3.5
+    container_name: spark
     environment:
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8081
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
     ports:
-      - "8081:8081"
+      - "68081:8080"
       - "7077:7077"
     volumes:
       - ./spark:/opt/spark-apps
@@ -152,19 +153,19 @@ services:
       - etl-network
 
   spark-worker:
-    image: apache/spark:3.5.0
+    image: bitnami/spark:3.5
     container_name: spark-worker
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
     environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark:7077
+      - SPARK_WORKER_MEMORY=2G
       - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_WEBUI_PORT=8082
-    ports:
-      - "8082:8082"
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
     depends_on:
-      - spark-master
-    volumes:
-      - ./spark:/opt/spark-apps
+      - spark
     networks:
       - etl-network
 
