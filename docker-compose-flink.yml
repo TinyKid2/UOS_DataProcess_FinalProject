@@ -1,5 +1,7 @@
 version: '3.8'
 
+# Apache Flink 버전 - Spark 대신 Flink 사용
+
 services:
   # Zookeeper for Kafka
   zookeeper:
@@ -134,37 +136,27 @@ services:
     networks:
       - etl-network
 
-  # Apache Spark for data processing (using official Apache image)
-  spark-master:
-    image: apache/spark:3.5.0
-    container_name: spark-master
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-    environment:
-      - SPARK_MASTER_HOST=spark-master
-      - SPARK_MASTER_PORT=7077
-      - SPARK_MASTER_WEBUI_PORT=8081
+  # Apache Flink JobManager (Spark 대체)
+  flink-jobmanager:
+    image: flink:1.18
+    container_name: flink-jobmanager
     ports:
       - "8081:8081"
-      - "7077:7077"
-    volumes:
-      - ./spark:/opt/spark-apps
+    command: jobmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
     networks:
       - etl-network
 
-  spark-worker:
-    image: apache/spark:3.5.0
-    container_name: spark-worker
-    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
-    environment:
-      - SPARK_WORKER_CORES=2
-      - SPARK_WORKER_MEMORY=2g
-      - SPARK_WORKER_WEBUI_PORT=8082
-    ports:
-      - "8082:8082"
+  # Apache Flink TaskManager
+  flink-taskmanager:
+    image: flink:1.18
+    container_name: flink-taskmanager
     depends_on:
-      - spark-master
-    volumes:
-      - ./spark:/opt/spark-apps
+      - flink-jobmanager
+    command: taskmanager
+    environment:
+      - JOB_MANAGER_RPC_ADDRESS=flink-jobmanager
     networks:
       - etl-network
 
