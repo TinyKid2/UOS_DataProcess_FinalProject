@@ -336,10 +336,10 @@ def receive_batch_power_data():
 def health_check():
     """헬스 체크 엔드포인트"""
     kafka_status = 'connected' if producer else 'disconnected'
-    
+    global producer, KAFKA_BOOTSTRAP_SERVERS
     # Kafka 재연결 시도
     if not producer:
-        global producer, KAFKA_BOOTSTRAP_SERVERS
+        # global producer, KAFKA_BOOTSTRAP_SERVERS
         for address in ['localhost:19092', 'kafka:29092', 'localhost:9092']:
             try:
                 test_producer = KafkaProducer(
